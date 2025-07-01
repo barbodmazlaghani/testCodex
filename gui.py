@@ -73,11 +73,11 @@ def predict_gasoline(df, speed_col, slope_col, gear_col):
     return pd.Series(preds_flat, index=idx)
 
 
-def process_file(path, cols, use_speed_distance=False):
+def process_file(path, cols, use_speed_distance=False, cng_filter=None):
     df = pd.read_csv(path)
-    # filter only valid CNG rows
-    if 'SS_B_CNG' in df.columns:
-        df = df[df['SS_B_CNG'] == 1]
+    # optional filter based on SS_B_CNG column
+    if 'SS_B_CNG' in df.columns and cng_filter in (0,1):
+        df = df[df['SS_B_CNG'] == cng_filter]
     # compute distance
     if use_speed_distance:
         df['_dist_step'] = df[cols['speed']] / 3600
@@ -113,6 +113,20 @@ class Application(tk.Tk):
             'distance': 'Cumulative_mileage',
             'cng_fuel': 'FS_FlVofKgSNG'
         }
+        # variables used for dynamic column selection
+        self.speed_col_var = tk.StringVar(value=self.cols['speed'])
+        self.gear_col_var = tk.StringVar(value=self.cols['gear'])
+        self.alt_col_var = tk.StringVar(value=self.cols['altitude'])
+        self.dist_col_var = tk.StringVar(value=self.cols['distance'])
+        self.fuel_col_var = tk.StringVar(value=self.cols['cng_fuel'])
+        self.available_cols = []
+
+        # filter on SS_B_CNG column (1, 0 or ignore)
+        self.cng_filter_var = tk.StringVar(value='1')
+
+        # what type of fuel is represented by the fuel column
+        self.fuel_type_var = tk.StringVar(value='CNG')  # "CNG" or "Gasoline"
+
         self.data = None
         self.gasoline_l_per_100km = 0
         self.cng_kg_per_100km = 0
@@ -127,9 +141,14 @@ class Application(tk.Tk):
         ttk.Button(frm, text="Process", command=self.process).pack(side='left', padx=5)
         ttk.Button(frm, text="Export CSV", command=self.export).pack(side='left', padx=5)
         ttk.Button(frm, text="Save Chart", command=self.save_chart).pack(side='left', padx=5)
+        ttk.Button(frm, text="Columns", command=self.open_column_dialog).pack(side='left', padx=5)
         self.distance_var = tk.StringVar(value='file')
         ttk.Label(frm, text='Distance:').pack(side='left', padx=5)
         ttk.Combobox(frm, textvariable=self.distance_var, values=['file', 'speed'], width=7).pack(side='left')
+        ttk.Label(frm, text='Fuel type:').pack(side='left', padx=(20,5))
+        ttk.Combobox(frm, textvariable=self.fuel_type_var, values=['CNG','Gasoline'], width=9).pack(side='left')
+        ttk.Label(frm, text='CNG flag:').pack(side='left', padx=(20,5))
+        ttk.Combobox(frm, textvariable=self.cng_filter_var, values=['1','0','All'], width=5).pack(side='left')
         opt_frame = ttk.Frame(self)
         opt_frame.pack(fill='x', padx=10, pady=5)
         self.plot_opts = {
@@ -170,6 +189,27 @@ class Application(tk.Tk):
             self.path_var.set(file_path)
             self.load_options(file_path)
 
+    def open_column_dialog(self):
+        if not self.available_cols:
+            messagebox.showwarning('Columns', 'Load a file first to detect columns.')
+            return
+        win = tk.Toplevel(self)
+        win.title('Select Columns')
+
+        items = [
+            ('Speed', self.speed_col_var),
+            ('Gear', self.gear_col_var),
+            ('Altitude', self.alt_col_var),
+            ('Distance', self.dist_col_var),
+            ('Fuel', self.fuel_col_var),
+        ]
+
+        for i, (label, var) in enumerate(items):
+            ttk.Label(win, text=label).grid(row=i, column=0, sticky='w', padx=5, pady=2)
+            ttk.Combobox(win, textvariable=var, values=self.available_cols, width=30).grid(row=i, column=1, padx=5, pady=2)
+
+        ttk.Button(win, text='OK', command=win.destroy).grid(row=len(items), column=0, columnspan=2, pady=5)
+
     def load_options(self, path):
         try:
             tmp = pd.read_csv(path, usecols=['trip'])
@@ -184,6 +224,17 @@ class Application(tk.Tk):
             cols = list(head.columns)
         except Exception:
             cols = []
+        self.available_cols = cols
+        # update column variables if the defaults aren't found
+        for var, default in [
+            (self.speed_col_var, self.cols['speed']),
+            (self.gear_col_var, self.cols['gear']),
+            (self.alt_col_var, self.cols['altitude']),
+            (self.dist_col_var, self.cols['distance']),
+            (self.fuel_col_var, self.cols['cng_fuel']),
+        ]:
+            if var.get() not in cols and cols:
+                var.set(cols[0])
         self.column_listbox.delete(0, tk.END)
         for c in cols:
             if c not in [cfg['column'] for cfg in self.plot_opts.values()]:
@@ -195,9 +246,15 @@ class Application(tk.Tk):
         else:
             dist = self.data[dist_col].diff().fillna(0).sum()
         gas = self.data['pred_gasoline'].sum()
-        cng = self.data['momentary_fuel'].sum()
+        real_fuel = self.data['momentary_fuel'].sum()
         self.gasoline_l_per_100km = (gas / dist * 100) / 1e6 if dist else 0
-        self.cng_kg_per_100km = (cng / dist * 100) / 1e3 if dist else 0
+        if self.fuel_type_var.get() == 'CNG':
+            self.cng_kg_per_100km = (real_fuel / dist * 100) / 1e3 if dist else 0
+        else:
+            self.cng_kg_per_100km = (real_fuel / dist * 100) / 1e6 if dist else 0
+
+    def unit_label(self):
+        return 'kg' if self.fuel_type_var.get() == 'CNG' else 'L'
 
     def process(self):
         path = self.path_var.get()
@@ -205,8 +262,28 @@ class Application(tk.Tk):
             messagebox.showwarning("Input", "Please select a CSV file")
             return
         use_speed = self.distance_var.get() == 'speed'
+        # update column names
+        self.cols['speed'] = self.speed_col_var.get()
+        self.cols['gear'] = self.gear_col_var.get()
+        self.cols['altitude'] = self.alt_col_var.get()
+        self.cols['distance'] = self.dist_col_var.get()
+        self.cols['cng_fuel'] = self.fuel_col_var.get()
+
+        cng_filter = None
+        if self.cng_filter_var.get() in ('1', '0'):
+            cng_filter = int(self.cng_filter_var.get())
+
+        self.plot_opts['Speed']['column'] = self.cols['speed']
+        self.plot_opts['Gear']['column'] = self.cols['gear']
+        self.plot_opts['Distance']['column'] = self.cols['distance']
+
         try:
-            self.data = process_file(path, self.cols, use_speed_distance=use_speed)
+            self.data = process_file(
+                path,
+                self.cols,
+                use_speed_distance=use_speed,
+                cng_filter=cng_filter,
+            )
         except Exception as e:
             messagebox.showerror("Error", str(e))
             return
@@ -216,8 +293,8 @@ class Application(tk.Tk):
         self.compute_stats(self.cols['distance'])
         messagebox.showinfo(
             "Results",
-            f"Gasoline: {self.gasoline_l_per_100km:.2f} L/100km\n"
-            f"CNG: {self.cng_kg_per_100km:.2f} kg/100km"
+            f"Predicted Gasoline: {self.gasoline_l_per_100km:.2f} L/100km\n"
+            f"Real Fuel: {self.cng_kg_per_100km:.2f} {self.unit_label()}/100km"
         )
         self.show_chart()
 
