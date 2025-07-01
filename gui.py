@@ -78,13 +78,18 @@ def predict_gasoline(df, speed_col, slope_col, gear_col):
     return pd.Series(preds_flat, index=idx)
 
 
-def process_file(path, cols, use_speed_distance=False):
+def process_file(path, cols, use_speed_distance=False, filter_col=None, filter_value=None):
     df = pd.read_csv(path)
-    if use_speed_distance:
+    if filter_col is not None and filter_value is not None and filter_col in df:
+        df = df[df[filter_col] == filter_value]
+    if use_speed_distance and cols['speed'] in df:
         df['_dist_step'] = df[cols['speed']] / 3600
         df[cols['distance']] = df['_dist_step'].cumsum()
     compute_slope(df, cols['altitude'], cols['distance'])
-    create_momentary_fuel(df, cols['cng_fuel'])
+    if cols['fuel'] in df:
+        create_momentary_fuel(df, cols['fuel'])
+    else:
+        df['momentary_fuel'] = 0
 
     df['pred_gasoline'] = predict_gasoline(
         df,
@@ -108,6 +113,7 @@ class Application(tk.Tk):
         self.create_widgets()
         self.data = None
         self.gasoline_l_per_100km = 0
+        self.actual_l_per_100km = 0
         self.cng_kg_per_100km = 0
 
     def create_widgets(self):
@@ -125,6 +131,41 @@ class Application(tk.Tk):
         ttk.Label(frm, text='Distance:').pack(side='left', padx=5)
         ttk.Combobox(frm, textvariable=self.distance_var,
                      values=['file', 'speed'], width=7).pack(side='left')
+        self.is_cng_var = tk.IntVar(value=1)
+        ttk.Checkbutton(frm, text='CNG File', variable=self.is_cng_var).pack(side='left', padx=5)
+
+        col_frame = ttk.Frame(self)
+        col_frame.pack(fill='x', padx=10, pady=5)
+        self.speed_col_var = tk.StringVar()
+        self.dist_col_var = tk.StringVar()
+        self.alt_col_var = tk.StringVar()
+        self.gear_col_var = tk.StringVar()
+        self.fuel_col_var = tk.StringVar()
+        self.cng_flag_col_var = tk.StringVar()
+        self.cng_filter_var = tk.StringVar(value='Both')
+
+        ttk.Label(col_frame, text='Speed').grid(row=0, column=0, sticky='w')
+        self.speed_cb = ttk.Combobox(col_frame, textvariable=self.speed_col_var, width=25)
+        self.speed_cb.grid(row=0, column=1, padx=5)
+        ttk.Label(col_frame, text='Distance').grid(row=0, column=2, sticky='w')
+        self.dist_cb = ttk.Combobox(col_frame, textvariable=self.dist_col_var, width=25)
+        self.dist_cb.grid(row=0, column=3, padx=5)
+
+        ttk.Label(col_frame, text='Altitude').grid(row=1, column=0, sticky='w')
+        self.alt_cb = ttk.Combobox(col_frame, textvariable=self.alt_col_var, width=25)
+        self.alt_cb.grid(row=1, column=1, padx=5)
+        ttk.Label(col_frame, text='Gear').grid(row=1, column=2, sticky='w')
+        self.gear_cb = ttk.Combobox(col_frame, textvariable=self.gear_col_var, width=25)
+        self.gear_cb.grid(row=1, column=3, padx=5)
+
+        ttk.Label(col_frame, text='Fuel Cum').grid(row=2, column=0, sticky='w')
+        self.fuel_cb = ttk.Combobox(col_frame, textvariable=self.fuel_col_var, width=25)
+        self.fuel_cb.grid(row=2, column=1, padx=5)
+        ttk.Label(col_frame, text='CNG Flag').grid(row=2, column=2, sticky='w')
+        self.cng_col_cb = ttk.Combobox(col_frame, textvariable=self.cng_flag_col_var, width=25)
+        self.cng_col_cb.grid(row=2, column=3, padx=5)
+        ttk.Label(col_frame, text='Value').grid(row=2, column=4, sticky='w')
+        ttk.Combobox(col_frame, textvariable=self.cng_filter_var, values=['Both', '1', '0'], width=7).grid(row=2, column=5, padx=5)
 
         # Variable selection frame
         opt_frame = ttk.Frame(self)
@@ -142,12 +183,12 @@ class Application(tk.Tk):
                 'axis': tk.StringVar(value='right'),
             },
             'Speed': {
-                'column': 'Vehicle_Speed',
+                'column': None,
                 'var': tk.IntVar(value=0),
                 'axis': tk.StringVar(value='left'),
             },
             'Gear': {
-                'column': 'Current_gear_shift_position_(Current_gear)',
+                'column': None,
                 'var': tk.IntVar(value=0),
                 'axis': tk.StringVar(value='left'),
             },
@@ -214,15 +255,48 @@ class Application(tk.Tk):
             if c not in [cfg['column'] for cfg in self.plot_opts.values()]:
                 self.column_listbox.insert(tk.END, c)
 
+        for cb in [self.speed_cb, self.dist_cb, self.alt_cb,
+                    self.gear_cb, self.fuel_cb, self.cng_col_cb]:
+            cb['values'] = cols
+
+        defaults = {
+            'speed': ['Vehicle_Speed', 'Speed'],
+            'distance': ['Cumulative_mileage', 'Distance'],
+            'altitude': ['altitude', 'Altitude'],
+            'gear': ['Current_gear_shift_position_(Current_gear)', 'Current gear shift position'],
+            'fuel': ['FS_FlVofKgSNG', 'Trip fuel consumption', 'fuel'],
+            'cng': ['SS_B_CNG']
+        }
+
+        def set_default(var, names):
+            for n in names:
+                if n in cols:
+                    var.set(n)
+                    return
+            if cols:
+                var.set(cols[0])
+
+        set_default(self.speed_col_var, defaults['speed'])
+        set_default(self.dist_col_var, defaults['distance'])
+        set_default(self.alt_col_var, defaults['altitude'])
+        set_default(self.gear_col_var, defaults['gear'])
+        set_default(self.fuel_col_var, defaults['fuel'])
+        set_default(self.cng_flag_col_var, defaults['cng'])
+
     def compute_stats(self, dist_col):
         if self.distance_var.get() == 'speed':
             dist = self.data['_dist_step'].sum()
         else:
             dist = self.data[dist_col].diff().fillna(0).sum()
         gas = self.data['pred_gasoline'].sum()
-        cng = self.data['momentary_fuel'].sum()
+        real = self.data['momentary_fuel'].sum()
         self.gasoline_l_per_100km = (gas / dist * 100) if dist else 0
-        self.cng_kg_per_100km = (cng / dist * 100) if dist else 0
+        if self.is_cng_var.get():
+            self.cng_kg_per_100km = (real / dist * 100) if dist else 0
+            self.actual_l_per_100km = 0
+        else:
+            self.actual_l_per_100km = (real / dist * 100) if dist else 0
+            self.cng_kg_per_100km = 0
 
     def process(self):
         path = self.path_var.get()
@@ -230,29 +304,50 @@ class Application(tk.Tk):
             messagebox.showwarning("Input", "Please select a CSV file")
             return
         cols = {
-            'speed': 'Vehicle_Speed',
-            'gear': 'Current_gear_shift_position_(Current_gear)',
-            'altitude': 'altitude',
-            'distance': 'Cumulative_mileage',
-            'cng_fuel': 'FS_FlVofKgSNG'
+            'speed': self.speed_col_var.get(),
+            'gear': self.gear_col_var.get(),
+            'altitude': self.alt_col_var.get(),
+            'distance': self.dist_col_var.get(),
+            'fuel': self.fuel_col_var.get(),
         }
         use_speed = self.distance_var.get() == 'speed'
+
+        filter_col = self.cng_flag_col_var.get()
+        filter_val = self.cng_filter_var.get()
+        val = None
+        if filter_col and filter_val in ('1', '0'):
+            val = int(filter_val)
         try:
-            self.data = process_file(path, cols, use_speed_distance=use_speed)
+            self.data = process_file(
+                path,
+                cols,
+                use_speed_distance=use_speed,
+                filter_col=filter_col if val is not None else None,
+                filter_value=val,
+            )
         except Exception as e:
             messagebox.showerror("Error", str(e))
             return
 
+        self.plot_opts['Speed']['column'] = cols['speed']
+        self.plot_opts['Gear']['column'] = cols['gear']
+
         selected = [self.trip_listbox.get(i) for i in self.trip_listbox.curselection()]
         if selected:
             self.data = self.data[self.data['trip'].astype(str).isin(selected)]
+        self.compute_stats(cols["distance"])
+        if self.is_cng_var.get():
+            msg = (
+                f"Predicted Gasoline: {self.gasoline_l_per_100km:.2f} L/100km\n"
+                f"CNG: {self.cng_kg_per_100km:.2f} kg/100km"
+            )
+        else:
+            msg = (
+                f"Predicted Gasoline: {self.gasoline_l_per_100km:.2f} L/100km\n"
+                f"Actual Gasoline: {self.actual_l_per_100km:.2f} L/100km"
+            )
+        messagebox.showinfo("Results", msg)
 
-        self.compute_stats(cols['distance'])
-        messagebox.showinfo(
-            "Results",
-            f"Gasoline: {self.gasoline_l_per_100km:.2f} L/100km\n"
-            f"CNG: {self.cng_kg_per_100km:.2f} kg/100km"
-        )
         self.show_chart()
 
     def show_chart(self):
