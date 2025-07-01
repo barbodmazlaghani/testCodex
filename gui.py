@@ -78,8 +78,11 @@ def predict_gasoline(df, speed_col, slope_col, gear_col):
     return pd.Series(preds_flat, index=idx)
 
 
-def process_file(path, cols):
+def process_file(path, cols, use_speed_distance=False):
     df = pd.read_csv(path)
+    if use_speed_distance:
+        df['_dist_step'] = df[cols['speed']] / 3600
+        df[cols['distance']] = df['_dist_step'].cumsum()
     compute_slope(df, cols['altitude'], cols['distance'])
     create_momentary_fuel(df, cols['cng_fuel'])
 
@@ -101,9 +104,11 @@ class Application(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("Fuel Consumption Predictor")
-        self.geometry("900x600")
+        self.geometry("1000x700")
         self.create_widgets()
         self.data = None
+        self.gasoline_l_per_100km = 0
+        self.cng_kg_per_100km = 0
 
     def create_widgets(self):
         frm = ttk.Frame(self)
@@ -114,6 +119,12 @@ class Application(tk.Tk):
         ttk.Button(frm, text="Browse", command=self.browse).pack(side='left', padx=5)
         ttk.Button(frm, text="Process", command=self.process).pack(side='left', padx=5)
         ttk.Button(frm, text="Export CSV", command=self.export).pack(side='left', padx=5)
+        ttk.Button(frm, text="Save Chart", command=self.save_chart).pack(side='left', padx=5)
+
+        self.distance_var = tk.StringVar(value='file')
+        ttk.Label(frm, text='Distance:').pack(side='left', padx=5)
+        ttk.Combobox(frm, textvariable=self.distance_var,
+                     values=['file', 'speed'], width=7).pack(side='left')
 
         # Variable selection frame
         opt_frame = ttk.Frame(self)
@@ -153,15 +164,65 @@ class Application(tk.Tk):
             menu = ttk.Combobox(opt_frame, textvariable=cfg['axis'], values=['left', 'right'], width=7)
             menu.grid(row=0, column=i*2 + 1, padx=2)
 
+        select_frame = ttk.Frame(self)
+        select_frame.pack(fill='both', padx=10, pady=5)
+        ttk.Label(select_frame, text='Trips').grid(row=0, column=0, sticky='w')
+        ttk.Label(select_frame, text='Extra Columns').grid(row=0, column=1, sticky='w')
+        self.trip_listbox = tk.Listbox(select_frame, selectmode='extended', height=5)
+        self.trip_listbox.grid(row=1, column=0, sticky='nsew', padx=5)
+        self.column_listbox = tk.Listbox(select_frame, selectmode='extended', height=5)
+        self.column_listbox.grid(row=1, column=1, sticky='nsew', padx=5)
+        select_frame.columnconfigure(0, weight=1)
+        select_frame.columnconfigure(1, weight=1)
+
         self.fig, self.ax_left = plt.subplots(figsize=(8, 4))
         self.ax_right = self.ax_left.twinx()
         self.canvas = FigureCanvasTkAgg(self.fig, master=self)
         self.canvas.get_tk_widget().pack(fill='both', expand=True)
 
+    def save_chart(self):
+        file_path = filedialog.asksaveasfilename(defaultextension='.png',
+                                                 filetypes=[('PNG files', '*.png'),
+                                                            ('All files', '*.*')])
+        if file_path:
+            self.fig.savefig(file_path)
+            messagebox.showinfo('Save Chart', f'Chart saved to {file_path}')
+
     def browse(self):
         file_path = filedialog.askopenfilename(filetypes=[('CSV files', '*.csv')])
         if file_path:
             self.path_var.set(file_path)
+            self.load_options(file_path)
+
+    def load_options(self, path):
+        try:
+            tmp = pd.read_csv(path, usecols=['trip'])
+            trips = sorted(tmp['trip'].dropna().unique())
+        except Exception:
+            trips = []
+        self.trip_listbox.delete(0, tk.END)
+        for t in trips:
+            self.trip_listbox.insert(tk.END, str(t))
+
+        try:
+            head = pd.read_csv(path, nrows=0)
+            cols = list(head.columns)
+        except Exception:
+            cols = []
+        self.column_listbox.delete(0, tk.END)
+        for c in cols:
+            if c not in [cfg['column'] for cfg in self.plot_opts.values()]:
+                self.column_listbox.insert(tk.END, c)
+
+    def compute_stats(self, dist_col):
+        if self.distance_var.get() == 'speed':
+            dist = self.data['_dist_step'].sum()
+        else:
+            dist = self.data[dist_col].diff().fillna(0).sum()
+        gas = self.data['pred_gasoline'].sum()
+        cng = self.data['momentary_fuel'].sum()
+        self.gasoline_l_per_100km = (gas / dist * 100) if dist else 0
+        self.cng_kg_per_100km = (cng / dist * 100) if dist else 0
 
     def process(self):
         path = self.path_var.get()
@@ -175,12 +236,23 @@ class Application(tk.Tk):
             'distance': 'Cumulative_mileage',
             'cng_fuel': 'FS_FlVofKgSNG'
         }
+        use_speed = self.distance_var.get() == 'speed'
         try:
-            self.data = process_file(path, cols)
+            self.data = process_file(path, cols, use_speed_distance=use_speed)
         except Exception as e:
             messagebox.showerror("Error", str(e))
             return
 
+        selected = [self.trip_listbox.get(i) for i in self.trip_listbox.curselection()]
+        if selected:
+            self.data = self.data[self.data['trip'].astype(str).isin(selected)]
+
+        self.compute_stats(cols['distance'])
+        messagebox.showinfo(
+            "Results",
+            f"Gasoline: {self.gasoline_l_per_100km:.2f} L/100km\n"
+            f"CNG: {self.cng_kg_per_100km:.2f} kg/100km"
+        )
         self.show_chart()
 
     def show_chart(self):
@@ -200,11 +272,18 @@ class Application(tk.Tk):
             if col not in self.data:
                 continue
             axis = self.ax_left if cfg['axis'].get() == 'left' else self.ax_right
-            axis.plot(self.data[col], label=name)
-            if cfg['axis'].get() == 'left':
+            color = 'tab:blue' if axis is self.ax_left else 'tab:red'
+            axis.plot(self.data[col], label=name, color=color)
+            if axis is self.ax_left:
                 left_labels.append(name)
             else:
                 right_labels.append(name)
+
+        for i in self.column_listbox.curselection():
+            col = self.column_listbox.get(i)
+            if col in self.data:
+                self.ax_left.plot(self.data[col], label=col, color='tab:blue')
+                left_labels.append(col)
 
         self.ax_left.set_xlabel('Time Index')
         self.ax_left.set_ylabel(', '.join(left_labels) if left_labels else 'Left Axis')
@@ -213,6 +292,13 @@ class Application(tk.Tk):
         handles_left, labels_left = self.ax_left.get_legend_handles_labels()
         handles_right, labels_right = self.ax_right.get_legend_handles_labels()
         self.ax_left.legend(handles_left + handles_right, labels_left + labels_right)
+
+        self.ax_left.spines['left'].set_color('tab:blue')
+        self.ax_left.yaxis.label.set_color('tab:blue')
+        self.ax_left.tick_params(axis='y', colors='tab:blue')
+        self.ax_right.spines['right'].set_color('tab:red')
+        self.ax_right.yaxis.label.set_color('tab:red')
+        self.ax_right.tick_params(axis='y', colors='tab:red')
 
         self.fig.tight_layout()
         self.canvas.draw()
