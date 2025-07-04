@@ -1,0 +1,36 @@
+{
+    "log": {
+        "loglevel": "info"
+    },
+    "inbounds": [
+        {
+            "port": 1080,
+            "protocol": "socks",
+            "settings": {
+                "auth": "noauth"
+            }
+        }
+    ],
+    "outbounds": [
+        {
+            "protocol": "vmess",
+            "settings": {
+                "vnext": [
+                    {
+                        "address": "104.234.196.68",
+                        "port": 12345,
+                        "users": [
+                            {
+                                "id": "ebdeb8e3-ab73-4483-91ad-359babe96897",
+                                "alterId": 64
+                            }
+                        ]
+                    }
+                ]
+            },
+            "streamSettings": {
+                "network": "tcp"
+            }
+        }
+    ]
+}
