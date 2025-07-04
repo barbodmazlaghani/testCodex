@@ -11,6 +11,8 @@ import pytz
 ALERT_WEBHOOK_URL = os.getenv("ALERT_WEBHOOK_URL", "https://hooks.your-notify-endpoint.com")
 YOUR_TIMEZONE = os.getenv("YOUR_TIMEZONE", "Europe/Berlin")
 PATH_TO_SAVE_CHARTS = os.getenv("PATH_TO_SAVE_CHARTS", "/mnt/data/trade_charts")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 CRYPTO = [
     "BTC-USD","ETH-USD","USDT-USD","XRP-USD","BNB-USD","SOL-USD","USDC-USD",
@@ -33,6 +35,36 @@ SYMBOLS = CRYPTO + INDICES + FX + COMMODS
 TZ = pytz.timezone(YOUR_TIMEZONE)
 
 os.makedirs(PATH_TO_SAVE_CHARTS, exist_ok=True)
+
+
+def send_telegram_message(message: str) -> None:
+    """Send a text message via Telegram if credentials are configured."""
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message,
+        "parse_mode": "HTML",
+    }
+    try:
+        requests.post(url, data=payload, timeout=10)
+    except Exception:
+        pass
+
+
+def send_telegram_chart(chart_path: str, caption: str = "") -> None:
+    """Send a chart image to Telegram."""
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
+    try:
+        with open(chart_path, "rb") as img:
+            files = {"photo": img}
+            data = {"chat_id": TELEGRAM_CHAT_ID, "caption": caption, "parse_mode": "HTML"}
+            requests.post(url, data=data, files=files, timeout=10)
+    except Exception:
+        pass
 
 def fetch_data(symbol: str) -> pd.DataFrame:
     df = yf.download(symbol, period="200d", interval="1d", progress=False)
@@ -264,6 +296,12 @@ def post_alert(payload: dict, chart_path: str):
         requests.post(ALERT_WEBHOOK_URL, json=payload, timeout=10)
     except Exception:
         pass
+    caption = (
+        f"<b>{payload['symbol']}</b> {payload['pattern']} ({payload['direction']})\n"
+        f"Entry: <b>{payload['entry']}</b> | Stop: <b>{payload['stop']}</b> | "
+        f"Target: <b>{payload['target']}</b> | RR: <b>{payload['rr']}</b>"
+    )
+    send_telegram_chart(chart_path, caption)
 
 def process_symbol(symbol: str):
     df = fetch_data(symbol)
