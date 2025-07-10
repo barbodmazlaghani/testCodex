@@ -40,6 +40,8 @@ import {
     MenuItem,
     FormControl,
     InputLabel,
+    Checkbox,
+    FormControlLabel,
 } from "@mui/material";
 
 ChartJS.register(
@@ -381,6 +383,10 @@ const AI = () => {
     const [predictedMomentaryFuel, setPredictedMomentaryFuel] = useState([]);
     const [actualMomentaryFuel, setActualMomentaryFuel] = useState([]);
     const [actualCumulativeFuelData, setActualCumulativeFuelData] = useState([]); // <-- New state
+
+    // Model configuration
+    const [useCNN, setUseCNN] = useState(false);
+    const [sequenceLength, setSequenceLength] = useState(SEQ_LEN);
     const [previewData, setPreviewData] = useState([]); // <-- Preview state
     const [showPreview, setShowPreview] = useState(false); // <-- Preview visibility state
     const [predictStartIndex, setPredictStartIndex] = useState(""); // <-- Add state
@@ -612,10 +618,10 @@ const AI = () => {
             COL_JERK,
         ]);
 
-        if (rows.length < DEFAULT_TEST_BLOCK_LENGTH + SEQ_LEN) {
+        if (rows.length < DEFAULT_TEST_BLOCK_LENGTH + sequenceLength) {
             alert(
                 `Not enough rows after cleaning. We have ${rows.length}, need at least ${
-                    DEFAULT_TEST_BLOCK_LENGTH + SEQ_LEN
+                    DEFAULT_TEST_BLOCK_LENGTH + sequenceLength
                 }.`
             );
             return;
@@ -774,50 +780,68 @@ const AI = () => {
                 console.log("Using existing model");
             } else {
                 console.log("Creating new model");
-                // Build a new model - Use a simpler architecture that doesn't require sequences
                 model = tf.sequential();
-                
-                // Input layer
-                model.add(tf.layers.dense({
-                    units: 64,
-                    activation: 'relu',
-                    inputShape: [FEATURE_COLS.length]
-                }));
-                
-                model.add(tf.layers.dense({
-                    units: 32, 
-                    activation: 'relu'
-                }));
-                
-                model.add(tf.layers.dense({
-                    units: 16, 
-                    activation: 'relu'
-                }));
-                
-                // Output layer
-                model.add(tf.layers.dense({
-                    units: 1
-                }));
-                
-                // Compile the model with correct metric names
+                if (useCNN) {
+                    model.add(tf.layers.conv1d({
+                        filters: 64,
+                        kernelSize: 2,
+                        activation: 'relu',
+                        inputShape: [sequenceLength, FEATURE_COLS.length]
+                    }));
+                    model.add(tf.layers.maxPooling1d({ poolSize: 2 }));
+                    model.add(tf.layers.conv1d({ filters: 64, kernelSize: 2, activation: 'relu' }));
+                    model.add(tf.layers.maxPooling1d({ poolSize: 2 }));
+                    model.add(tf.layers.conv1d({ filters: 128, kernelSize: 2, activation: 'relu' }));
+                    model.add(tf.layers.flatten());
+                    model.add(tf.layers.dense({ units: 64, activation: 'relu' }));
+                    model.add(tf.layers.dropout({ rate: 0.1 }));
+                    model.add(tf.layers.dense({ units: 32, activation: 'relu' }));
+                } else {
+                    model.add(tf.layers.dense({
+                        units: 64,
+                        activation: 'relu',
+                        inputShape: [FEATURE_COLS.length]
+                    }));
+                    model.add(tf.layers.dense({ units: 32, activation: 'relu' }));
+                    model.add(tf.layers.dense({ units: 16, activation: 'relu' }));
+                }
+                model.add(tf.layers.dense({ units: 1 }));
+
                 model.compile({
                     optimizer: tf.train.adam(0.001),
-                    loss: 'meanAbsoluteError', // Keep loss as full name
-                    metrics: ['mae', 'mse'] // Use short names for metrics
+                    loss: 'meanAbsoluteError',
+                    metrics: ['mae', 'mse']
                 });
             }
             
-            // Convert to tensors (2D instead of 3D)
-            const trainXTensor = tf.tensor2d(trainFeaturesScaled);
-            const trainYTensor = tf.tensor1d(trainTargetScaled);
+            let trainXTensor;
+            let trainYTensor;
+
+            if (useCNN) {
+                const seqTrain = await createSequencesAsync(trainFeaturesScaled, trainTargetScaled, sequenceLength);
+                trainXTensor = tf.tensor3d(seqTrain.X);
+                trainYTensor = tf.tensor1d(seqTrain.y.map(arr => arr[sequenceLength - 1][0]));
+            } else {
+                trainXTensor = tf.tensor2d(trainFeaturesScaled);
+                trainYTensor = tf.tensor1d(trainTargetScaled);
+            }
             
             // Test data
             const testFeaturesScaled = xScaler.transform(testFeatures);
             const testTargetReshaped = testTarget.map(v => [v]);
             const testTargetScaled = yScaler.transform(testTargetReshaped).map(r => r[0]);
             
-            const testXTensor = tf.tensor2d(testFeaturesScaled);
-            const testYTensor = tf.tensor1d(testTargetScaled);
+            let testXTensor;
+            let testYTensor;
+
+            if (useCNN) {
+                const seqTest = await createSequencesAsync(testFeaturesScaled, testTargetScaled, sequenceLength);
+                testXTensor = tf.tensor3d(seqTest.X);
+                testYTensor = tf.tensor1d(seqTest.y.map(arr => arr[sequenceLength - 1][0]));
+            } else {
+                testXTensor = tf.tensor2d(testFeaturesScaled);
+                testYTensor = tf.tensor1d(testTargetScaled);
+            }
             
             // Custom callback for training progress
             const epochs = parseInt(numEpochs, 10) || 50;
@@ -1311,7 +1335,13 @@ const AI = () => {
                 // --- End Scaling ---
 
                 const Xscaled = currentXScaler.transform(features);
-                const Xtensor = tf.tensor2d(Xscaled);
+                let Xtensor;
+                if (useCNN) {
+                    const seq = await createSequencesAsync(Xscaled, actualMomentaryFuel.length>0 ? actualMomentaryFuel : new Array(Xscaled.length).fill(0), sequenceLength);
+                    Xtensor = tf.tensor3d(seq.X);
+                } else {
+                    Xtensor = tf.tensor2d(Xscaled);
+                }
 
                 // --- Predict ---
                 console.log("Predicting with input shape:", Xtensor.shape);
@@ -1455,9 +1485,14 @@ const AI = () => {
             
             console.log("Applying scaling...");
             const Xscaled = currentXScaler.transform(features);
-            
-            // Create 2D tensor
-            const Xtensor = tf.tensor2d(Xscaled);
+
+            let Xtensor;
+            if (useCNN) {
+                const seq = await createSequencesAsync(Xscaled, new Array(Xscaled.length).fill(0), sequenceLength);
+                Xtensor = tf.tensor3d(seq.X);
+            } else {
+                Xtensor = tf.tensor2d(Xscaled);
+            }
             
             // Predict
             console.log("Predicting with input shape:", Xtensor.shape);
@@ -2087,6 +2122,28 @@ const AI = () => {
                                     style: { color: "white" },
                                 }}
                             />
+                            <FormControlLabel
+                                control={
+                                    <Checkbox
+                                        checked={useCNN}
+                                        onChange={(e) => setUseCNN(e.target.checked)}
+                                        sx={{ color: "white" }}
+                                    />
+                                }
+                                label="Use CNN Model"
+                                sx={{ color: "white", mt: 2 }}
+                            />
+                            {useCNN && (
+                                <TextField
+                                    label="Sequence Length"
+                                    type="number"
+                                    value={sequenceLength}
+                                    onChange={(e) => setSequenceLength(parseInt(e.target.value, 10))}
+                                    InputLabelProps={{ shrink: true, style: { color: "white" } }}
+                                    InputProps={{ style: { color: "white" } }}
+                                    sx={{ mt: 2 }}
+                                />
+                            )}
                         </Box>
 
                         {modelLoaded ? (
