@@ -1,0 +1,214 @@
+body {
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 0;
+}
+
+#root {
+    margin: 0 auto;
+}
+
+.top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 95%;
+    padding: 0.75rem;
+    border-radius: 1.25rem;
+    box-shadow: rgba(0, 0, 0, 0.24) 0px 3px 8px;
+    /*box-shadow: rgba(255, 255, 255, 0.9) 0rem 0rem 0.0625rem 0.0625rem inset, rgba(0, 0, 0, 0.05) 0rem 1.25rem 1.6875rem 0rem;*/
+    position: relative;
+    background: #333946;
+}
+
+.top-bar label {
+    font-size: 1.2rem;
+}
+
+.top-bar select {
+    font-size: 1.2rem;
+    padding: 0.5rem;
+
+}
+
+.main-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.right-bar {
+    flex-basis: 200px;
+    padding: 1rem;
+}
+
+.gauge-container {
+    padding: 1rem 0;
+    margin: 40px 0;
+    display: flex;
+    flex-wrap: wrap;
+    color: #333;
+    width: 60%;
+    justify-content: center;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius:1.25rem
+}
+
+
+.tables-container {
+    display: flex;
+    flex-direction: column;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 10px;
+}
+
+.table-container {
+    flex-basis: 33%;
+    margin: 40px;
+    border-radius: 10px;
+}
+
+.table-container h2 {
+    text-align: center;
+    margin-bottom: 10px;
+
+}
+
+
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin-bottom: 1rem;
+    background-color: white;
+    color:black;
+}
+
+table th,
+table td {
+    padding: 0.5rem;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid #ddd;
+}
+
+table th {
+    background-color: #141235;
+    color: white;
+    font-weight: bold;
+    border-bottom: 2px solid #ccc;
+}
+table tbody tr:hover {
+    background-color: #f0f0f0;
+}
+
+h2 {
+    margin-top: 1.5rem;
+    margin-bottom: 0.5rem;
+}
+.csv-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    margin-top: 50px;
+}
+
+.time-picker {
+    margin: 10px;
+    padding: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font-size: 16px;
+}
+
+.download-button {
+    padding: 10px 20px;
+    font-size: 16px;
+    box-shadow: rgba(0, 0, 0, 0.24) 0px 3px 8px;
+    color: white;
+    background-color: #282c33;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-top: 20px;
+    transition: background-color 0.3s;
+}
+.apply-button {
+    padding: 10px 20px ;
+    margin: 10px;
+    font-size: 16px;
+    color: white;
+    background-color: #007bff;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.download-button:hover {
+    background-color: #141619;
+}
+.apply-button:hover {
+    background-color: #141619;
+}
+
+/* Add responsiveness */
+@media (max-width: 768px) {
+    .csv-container {
+        width: 90%;
+    }
+
+    .time-picker,
+    .download-button,
+    .apply-button{
+        width: 100%;
+    }
+}
+.leaflet-control-container .leaflet-routing-container-hide {
+    display: none;
+}
+
+/* .map-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 200px;
+  width: 100%;
+} */
+.leaflet-layer,
+.leaflet-control-zoom-in,
+.leaflet-control-zoom-out,
+.leaflet-control-attribution {
+    filter: invert(100%) hue-rotate(180deg) brightness(95%) contrast(90%);
+}
+.MuiFormControl-root .MuiSelect-icon {
+    color: white;
+    border-color: white;
+}
+@media (max-width: 768px) {
+    .globe-map{
+        flex-direction: column;
+    }
+    .tables-container{
+        flex-direction: column;
+    }
+    .chart-container{
+        flex-direction: column;
+
+    }
+    #upper-map{
+        height: 40vh;
+        width: 80vw !important;
+    }
+    .gauge-container{
+        width: 90%;
+    }
+    .chart-container{
+        width: 90vw;
+    }
+    #upper-speed-chart{
+        height: 40vh;
+        width: 80vw !important;
+    }
+}
