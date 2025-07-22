@@ -170,6 +170,12 @@ export const streamChatMessage = async (sessionId, messageContent, selectedSecti
                 "file_name": att.name,
                 "image_url": { "url": `data:${att.type};base64,${att.base64}` }
             });
+        } else if (att.type === 'application/pdf') {
+            payload.content.push({
+                "type": "image_url",
+                "file_name": att.name,
+                "image_url": { "url": `data:application/pdf;base64,${att.base64}` }
+            });
         } else {
             payload.content.push({
                 "type": mapToApiFileType(att.type),
