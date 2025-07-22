@@ -134,7 +134,7 @@ export const deleteFile = (fileId) => {
 
 
 // --- Chat Streaming API Call (Using Fetch for SSE) ---
-export const streamChatMessage = async (sessionId, messageContent, selectedSections, signal, fileData = null, audioData = null, fileType = '') => {
+export const streamChatMessage = async (sessionId, messageContent, selectedSections, signal, attachments = [], audioData = null) => {
     const token = localStorage.getItem('accessToken');
     if (!token) {
         // Handle missing token case early, perhaps redirect or throw specific error
@@ -146,27 +146,22 @@ export const streamChatMessage = async (sessionId, messageContent, selectedSecti
         throw new Error("Session ID is required for streaming.");
     }
 
-    const payload = { content: [{"type": "text","text": messageContent}], sections:selectedSections };
-    if (fileData && fileType) {
-        if (fileType.startsWith('image/')) 
-        {
+    const payload = { content: [{"type": "text","text": messageContent}], sections: selectedSections };
+    attachments.forEach(att => {
+        if (att.type.startsWith('image/')) {
             payload.content.push({
                 "type": "image_url",
-                "image_url": {
-                  "url": `data:${fileType};base64,${fileData}`
-                }
-              });
-        } 
-        else if (fileType === 'application/pdf') 
-        {
+                "file_name": att.name,
+                "image_url": { "url": `data:${att.type};base64,${att.base64}` }
+            });
+        } else {
             payload.content.push({
-                "type": "image_url",
-                "image_url": {
-                  "url": `data:application/pdf;base64,${fileData}`
-                }
-              });
+                "type": att.type,
+                "file_name": att.name,
+                "file_data": att.base64
+            });
         }
-    }
+    });
     if (audioData) {
         payload.content.push({
             "type": "input_audio",
