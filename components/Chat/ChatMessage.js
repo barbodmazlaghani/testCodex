@@ -12,7 +12,7 @@ import { getMessageTTS, exportMessage } from '../../services/api';
 // *** Add showFeedback to the destructured props ***
 const ChatMessage = ({ message, onLikeDislike, onCopy, showFeedback }) => {
     // Destructure message properties, including the new isIdFinal flag
-    const { id, sender, text, is_liked, isIdFinal, chartData, fileData, fileType, fileName, audioData } = message;
+    const { id, sender, text, is_liked, isIdFinal, chartData, attachments = [], audioData } = message;
     const isUser = sender === 'user';
     const isBot = sender === 'bot';
     const isError = sender === 'error';
@@ -161,15 +161,15 @@ const ChatMessage = ({ message, onLikeDislike, onCopy, showFeedback }) => {
                     </div>
                 )}
 
-                {fileData && fileType && (
-                    fileType.startsWith('image/') ? (
-                        <img className="message-image" src={`data:${fileType};base64,${fileData}`} alt={fileName || 'attachment'} />
+                {attachments.map((att, idx) => (
+                    att.fileType && att.fileType.startsWith('image/') ? (
+                        <img key={idx} className="message-image" src={`data:${att.fileType};base64,${att.fileData}`} alt={att.fileName || 'attachment'} />
                     ) : (
-                        <a className="file-attachment" href={`data:${fileType};base64,${fileData}`} download={fileName || 'file'}>
-                            <FaFileAlt /> {fileName}
+                        <a key={idx} className="file-attachment" href={`data:application/octet-stream;base64,${att.fileData}`} download={att.fileName || 'file'}>
+                            <FaFileAlt /> {att.fileName}
                         </a>
                     )
-                )}
+                ))}
                 {audioData && (
                     <audio controls className="audio-attachment" src={`data:audio/wav;base64,${audioData}`}></audio>
                 )}
@@ -256,9 +256,13 @@ ChatMessage.propTypes = {
         is_liked: PropTypes.bool, // Can be null, true, or false
         isIdFinal: PropTypes.bool.isRequired,
         chartData: PropTypes.object,
-        fileData: PropTypes.string,
-        fileType: PropTypes.string,
-        fileName: PropTypes.string,
+        attachments: PropTypes.arrayOf(
+            PropTypes.shape({
+                fileData: PropTypes.string.isRequired,
+                fileType: PropTypes.string,
+                fileName: PropTypes.string,
+            })
+        ),
         audioData: PropTypes.string,
     }).isRequired,
     onLikeDislike: PropTypes.func, // Callback for feedback

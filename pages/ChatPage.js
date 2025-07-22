@@ -230,12 +230,8 @@ const ChatPage = () => {
                         const formattedMessages = historyResponse.data.map(msg => {
                             // Initialize variables to hold parsed content
                             let textContent = '';
-                            let fileData = null;
-                            let fileType = null;
+                            let attachments = [];
                             let audioData = null;
-                            
-                            // The API might provide a top-level filename for attachments
-                            let fileName = msg.original_filename || null; 
                             // Process the new 'content' array format
                             if (Array.isArray(msg.json_content)) {
                                 msg.json_content.forEach(item => {
@@ -244,24 +240,18 @@ const ChatPage = () => {
                                             // Append text content, adding a newline if text already exists
                                             textContent += (textContent ? '\n' : '') + item.text;
                                             break;
-                                        case 'image_url':
-                                            // The URL is a data URI like: `data:[MIME_TYPE];base64,[DATA]`
-                                            const urlParts = item.image_url.url.split(';base64,');
+                                        case 'image_url': {
+                                            const urlParts = item.image_url.url.split(";base64,");
                                             if (urlParts.length === 2) {
-                                                const mimeTypePart = urlParts[0].split('data:');
+                                                const mimeTypePart = urlParts[0].split("data:");
                                                 if (mimeTypePart.length === 2) {
-                                                    fileType = mimeTypePart[1]; // e.g., "image/png" or "application/pdf"
-                                                    fileData = urlParts[1];     // The Base64 data
+                                                    attachments.push({ fileData: urlParts[1], fileType: mimeTypePart[1], fileName: item.file_name || "image" });
                                                 }
                                             }
-                                            break;
+                                            break; }
                                         case 'input_audio':
-                                            // Extract audio data
                                             if (item.input_audio && item.input_audio.data) {
                                                 audioData = item.input_audio.data;
-                                                if (!fileName) {
-                                                     fileName = 'audio_message.wav';
-                                                }
                                             }
                                             break;
                                         default:
@@ -284,9 +274,7 @@ const ChatPage = () => {
                                 isIdFinal: true, // Messages from history are always final
                                 chartData: msg.chart_data || null,
                                 // Add the newly parsed fields
-                                fileData,
-                                fileType,
-                                fileName,
+                                attachments,
                                 audioData,
                             };
                         });
@@ -517,7 +505,7 @@ const ChatPage = () => {
 
     // --- Send Message Handler ---
     const handleSendMessage = useCallback(async (query, options = {}) => {
-        const { fileData = null, audioData = null, fileType = '', fileName = '' } = options;
+        const { attachments = [], audioData = null } = options;
         if (!currentSessionId) {
             setError("خطا: شناسه جلسه چت نامعتبر است. لطفاً یک چت جدید شروع کنید.");
             return;
@@ -530,8 +518,9 @@ const ChatPage = () => {
         setError('');
         let userText = query;
         if (!userText) {
-            if (fileName) {
-                userText = `ارسال فایل: ${fileName}`;
+            if (attachments.length > 0) {
+                const names = attachments.map(f => f.name || f.fileName || 'file').join(', ');
+                userText = `ارسال فایل: ${names}`;
             } else if (audioData) {
                 userText = 'پیام صوتی';
             }
@@ -541,9 +530,7 @@ const ChatPage = () => {
             sender: 'user',
             text: userText,
             isIdFinal: true,
-            fileData,
-            fileType,
-            fileName,
+            attachments,
             audioData,
         };
         const botMessageId = `bot-${Date.now()}`; // Temporary ID
@@ -564,7 +551,7 @@ const ChatPage = () => {
         timeoutRef.current = setTimeout(() => handleTimeout(botMessageId), STREAM_TIMEOUT_MS);
 
         try {
-            const reader = await streamChatMessage(currentSessionId, query, selectedSections, signal, fileData, audioData, fileType);
+            const reader = await streamChatMessage(currentSessionId, query, selectedSections, signal, attachments, audioData);
             const decoder = new TextDecoder();
             let buffer = '';
             let accumulatedBotText = '';

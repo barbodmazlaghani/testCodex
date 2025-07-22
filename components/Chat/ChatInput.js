@@ -9,7 +9,7 @@ const ChatInput = ({ onSendMessage, isLoading }) => {
     const fileInputRef = useRef(null);
     const mediaRecorderRef = useRef(null);
     const [isRecording, setIsRecording] = useState(false);
-    const [fileAttachment, setFileAttachment] = useState(null); // {base64, type, name}
+    const [fileAttachments, setFileAttachments] = useState([]); // [{base64, type, name}]
     const [audioAttachment, setAudioAttachment] = useState(null); // {base64}
 
     useEffect(() => {
@@ -29,15 +29,14 @@ const ChatInput = ({ onSendMessage, isLoading }) => {
     };
 
     const handleSend = () => {
-        if ((message.trim() || fileAttachment || audioAttachment) && !isLoading) {
+        if ((message.trim() || fileAttachments.length > 0 || audioAttachment) && !isLoading) {
+            const normalized = fileAttachments.map(f => ({ fileData: f.base64, fileType: f.type, fileName: f.name }));
             onSendMessage(message.trim(), {
-                fileData: fileAttachment?.base64 || null,
-                fileType: fileAttachment?.type || '',
-                fileName: fileAttachment?.name || '',
+                attachments: normalized,
                 audioData: audioAttachment?.base64 || null,
             });
             setMessage('');
-            setFileAttachment(null);
+            setFileAttachments([]);
             setAudioAttachment(null);
             if (textareaRef.current) {
                 textareaRef.current.style.height = 'auto'; // Reset height
@@ -53,30 +52,44 @@ const handleKeyDown = (e) => {
 };
 
 const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (!file || isLoading) return;
+    const files = Array.from(e.target.files);
+    if (files.length === 0 || isLoading) return;
 
-    const isImage = file.type.startsWith('image/');
-    const isPdf = file.type === 'application/pdf';
-    const isAudio = file.type === 'audio/wav' || file.type === 'audio/wave';
+    const processFile = (file) => new Promise(resolve => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const base64 = reader.result.split(',')[1];
+            resolve({ file, base64 });
+        };
+        reader.readAsDataURL(file);
+    });
 
-    if (!(isImage || isPdf || isAudio)) {
-        alert('نوع فایل پشتیبانی نمی‌شود.');
-        e.target.value = '';
-        return;
-    }
+    Promise.all(files.map(processFile)).then(results => {
+        const newAttachments = [];
+        results.forEach(({ file, base64 }) => {
+            const isAudio = file.type === 'audio/wav' || file.type === 'audio/wave';
+            const isImage = file.type.startsWith('image/');
+            const isPdf = file.type === 'application/pdf';
+            const isDocx = file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+            const isXlsx = file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+            const isCsv = file.type === 'text/csv';
+            const isTxt = file.type === 'text/plain';
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-        const base64 = reader.result.split(',')[1];
-        if (isAudio) {
-            setAudioAttachment({ base64 });
-        } else {
-            setFileAttachment({ base64, type: file.type, name: file.name });
+            if (!(isImage || isPdf || isDocx || isXlsx || isCsv || isTxt || isAudio)) {
+                return;
+            }
+
+            if (isAudio) {
+                setAudioAttachment({ base64 });
+            } else {
+                newAttachments.push({ base64, type: file.type, name: file.name });
+            }
+        });
+        if (newAttachments.length > 0) {
+            setFileAttachments(prev => [...prev, ...newAttachments]);
         }
         e.target.value = '';
-    };
-    reader.readAsDataURL(file);
+    });
 };
 
 const startRecording = async () => {
@@ -127,16 +140,16 @@ const stopRecording = () => {
                 dir="rtl"
             />
 
-            {fileAttachment && (
-                <div className="attachment-preview">
-                    {fileAttachment.type.startsWith('image/') ? (
-                        <img src={`data:${fileAttachment.type};base64,${fileAttachment.base64}`} alt={fileAttachment.name} />
+            {fileAttachments.map((file, idx) => (
+                <div key={idx} className="attachment-preview">
+                    {file.type.startsWith('image/') ? (
+                        <img src={`data:${file.type};base64,${file.base64}`} alt={file.name} />
                     ) : (
-                        <span className="file-name">{fileAttachment.name}</span>
+                        <span className="file-name">{file.name}</span>
                     )}
-                    <button className="remove-attachment" onClick={() => setFileAttachment(null)}>×</button>
+                    <button className="remove-attachment" onClick={() => setFileAttachments(prev => prev.filter((_, i) => i !== idx))}>×</button>
                 </div>
-            )}
+            ))}
             {audioAttachment && (
                 <div className="attachment-preview">
                     <audio controls src={`data:audio/wav;base64,${audioAttachment.base64}`} />
@@ -148,7 +161,8 @@ const stopRecording = () => {
                 type="file"
                 ref={fileInputRef}
                 style={{ display: 'none' }}
-                accept="image/*,application/pdf,audio/wav"
+                accept="image/*,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain,audio/wav"
+                multiple
                 onChange={handleFileChange}
             />
             <Button
@@ -171,7 +185,7 @@ const stopRecording = () => {
 
             <Button
                 onClick={handleSend}
-                disabled={isLoading || (!message.trim() && !fileAttachment && !audioAttachment)}
+                disabled={isLoading || (!message.trim() && fileAttachments.length === 0 && !audioAttachment)}
                 className="send-button"
             >
                 {isLoading ? '...' : 'ارسال'}
