@@ -4,6 +4,22 @@ import axios from 'axios';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://127.0.0.1:8000'; // Fallback
 
+// Map browser MIME types to API specific file types
+const mapToApiFileType = (mimeType) => {
+    switch (mimeType) {
+        case 'text/csv':
+            return 'file/csv';
+        case 'text/plain':
+            return 'file/txt';
+        case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+            return 'file/docx';
+        case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+            return 'file/xlsx';
+        default:
+            return mimeType;
+    }
+};
+
 const api = axios.create({
     baseURL: API_URL + '/api/',
     headers: {
@@ -156,7 +172,7 @@ export const streamChatMessage = async (sessionId, messageContent, selectedSecti
             });
         } else {
             payload.content.push({
-                "type": att.type,
+                "type": mapToApiFileType(att.type),
                 "file_name": att.name,
                 "file_data": att.base64
             });

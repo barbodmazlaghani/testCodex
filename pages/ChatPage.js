@@ -23,6 +23,22 @@ import { FaInfoCircle, FaPlus, FaListUl, FaFileAlt, FaTrash, FaDownload, FaBars,
 import { useLanguage } from '../contexts/LanguageContext';
 import './ChatPage.css';
 
+// Map browser MIME types to API specific file types
+const mapToApiFileType = (mimeType) => {
+    switch (mimeType) {
+        case 'text/csv':
+            return 'file/csv';
+        case 'text/plain':
+            return 'file/txt';
+        case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+            return 'file/docx';
+        case 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet':
+            return 'file/xlsx';
+        default:
+            return mimeType;
+    }
+};
+
 const STREAM_TIMEOUT_MS = 120000; // 120 seconds timeout for stream inactivity
 
 const ChatPage = () => {
@@ -249,6 +265,15 @@ const ChatPage = () => {
                                                 }
                                             }
                                             break; }
+                                        case 'file/csv':
+                                        case 'file/txt':
+                                        case 'file/docx':
+                                        case 'file/xlsx':
+                                        case 'file/pdf':
+                                            if (item.file_data) {
+                                                attachments.push({ fileData: item.file_data, fileType: item.type, fileName: item.file_name || 'file' });
+                                            }
+                                            break;
                                         case 'input_audio':
                                             if (item.input_audio && item.input_audio.data) {
                                                 audioData = item.input_audio.data;
@@ -554,7 +579,7 @@ const ChatPage = () => {
             // Normalize attachments for API call
             const apiAttachments = attachments.map(att => ({
                 name: att.fileName || att.name,
-                type: att.fileType || att.type,
+                type: mapToApiFileType(att.fileType || att.type),
                 base64: att.fileData || att.base64
             }));
 
