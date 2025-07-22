@@ -1,0 +1,29 @@
+/* Keep default create-react-app styles or add your own base resets/styles */
+body {
+  margin: 0;
+  /* Apply Vazirmatn font, fallback to standard sans-serif */
+  font-family: 'Vazirmatn', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #f4f7f6; /* Match app background */
+  direction: rtl; /* Set base direction */
+  text-align: right; /* Set base text alignment */
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+  direction: ltr; /* Code usually remains LTR */
+  text-align: left;
+}
+
+/* Ensure full height for root */
+#root {
+    height: 100vh;
+}
+
+* {
+  box-sizing: border-box; /* Apply box-sizing globally */
+}

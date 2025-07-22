@@ -1,0 +1,48 @@
+.auth-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background-color: #f4f7f6; /* Light background */
+    padding: 1rem;
+    box-sizing: border-box;
+}
+
+.auth-box {
+    background-color: #fff;
+    padding: 0.5rem 0.5rem;
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+    width: 100%;
+    max-width: 400px; /* Max width for the form box */
+    box-sizing: border-box;
+}
+
+.auth-icon {
+    display: block; /* Needed for margin: auto horizontal centering */
+    width: 80px; /* Adjust size as needed */
+    height: 80px; /* Adjust size as needed */
+    /* Use height: auto; if your icon isn't square to maintain aspect ratio */
+    /* height: auto; */
+    margin: 0 auto 1rem auto; /* Centers horizontally, adds 1rem margin below */
+    /* margin-bottom: 1rem; */ /* Alternative if you prefer */
+}
+
+.auth-title {
+    text-align: center;
+    margin-bottom: 1.5rem;
+    margin-top: -1rem;
+    color: #333;
+    font-size: 1.8rem;
+    font-weight: 600;
+}
+
+/* Responsive adjustments */
+@media (max-width: 480px) {
+    .auth-box {
+        padding: 1.5rem;
+    }
+    .auth-title {
+        font-size: 1.5rem;
+    }
+}
