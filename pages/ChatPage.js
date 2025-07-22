@@ -551,7 +551,14 @@ const ChatPage = () => {
         timeoutRef.current = setTimeout(() => handleTimeout(botMessageId), STREAM_TIMEOUT_MS);
 
         try {
-            const reader = await streamChatMessage(currentSessionId, query, selectedSections, signal, attachments, audioData);
+            // Normalize attachments for API call
+            const apiAttachments = attachments.map(att => ({
+                name: att.fileName || att.name,
+                type: att.fileType || att.type,
+                base64: att.fileData || att.base64
+            }));
+
+            const reader = await streamChatMessage(currentSessionId, query, selectedSections, signal, apiAttachments, audioData);
             const decoder = new TextDecoder();
             let buffer = '';
             let accumulatedBotText = '';
